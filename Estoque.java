@@ -1,30 +1,70 @@
 // Sistema de Controle de Estoque e Vendas
-// versao 1.0 - feito rapido pra entregar antes do prazo
-// autor: equipe antiga
+// Versao: 1.1
+// Historico de versoes:
+//   1.0 - Versao inicial entregue pela equipe antiga.
+//   1.1 - Quitacao de divida tecnica (Unidade 2):
+//         D1.: senha do admin externalem arquivo .env.
+//         D16: unificacao da regra de desconto.
+//         D13 e D22: constantes nomeadas no lugar de numeros magicos.
+//         D5: encapsulamento da classe Produto.
+//         D25: extracao da autenticacao de administrador para um metodo dedicado.
+//
+// Autores: Rodrigo Ferreira da Nobrega, Jorge do Amaral Neto.
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Scanner;
 import java.util.Date;   // (nao usado)
 
 public class Estoque {
+    private static final String SENHA_ADMIN = carregarSenhaAdmin();
 
-    static String SENHA_ADMIN = "1234";  // senha do admin
+    private static final double LIMITE_PARA_DESCONTO = 100.0;
+    private static final double PERCENTUAL_DESCONTO = 0.10;
+
+    private static final String OPCAO_CADASTRAR = "1";
+    private static final String OPCAO_VENDER = "2";
+    private static final String OPCAO_LISTAR = "3";
+    private static final String OPCAO_ESTOQUE_BAIXO = "4";
+    private static final String OPCAO_ADMIN = "5";
+    private static final String OPCAO_SAIR = "0";
 
     static ArrayList<Produto> produtos = new ArrayList<>();
     static ArrayList<String> hist = new ArrayList<>();  // historico
 
     static class Produto {
-        String nome;
-        double preco;
-        int qtd;
+        private String nome;
+        private double preco;
+        private int qtd;
+
+        Produto(String nome, double preco, int qtd) {
+            this.nome = nome;
+            this.preco = preco;
+            this.qtd = qtd;
+        }
+
+        String getNome() {
+            return nome;
+        }
+
+        double getPreco() {
+            return preco;
+        }
+
+        int getQtd() {
+            return qtd;
+        }
+
+        void setQtd(int qtd) {
+            this.qtd = qtd;
+        }
     }
 
     // funcao que adiciona produto
     static void add(String n, double p, int q) {
-        Produto prod = new Produto();
-        prod.nome = n;
-        prod.preco = p;
-        prod.qtd = q;
+        Produto prod = new Produto(n, p, q);
         produtos.add(prod);
         hist.add(n);
         System.out.println("Produto adicionado!");
@@ -32,14 +72,11 @@ public class Estoque {
 
     static double vender(String nome, int quantidade) {
         for (int i = 0; i < produtos.size(); i++) {
-            if (produtos.get(i).nome.equals(nome)) {
-                if (produtos.get(i).qtd >= quantidade) {
-                    produtos.get(i).qtd = produtos.get(i).qtd - quantidade;
-                    double total = produtos.get(i).preco * quantidade;
-                    // desconto pra compras grandes
-                    if (total > 100) {
-                        total = total - total * 0.1;
-                    }
+            Produto p = produtos.get(i);
+            if (p.getNome().equals(nome)) {
+                if (p.getQtd() >= quantidade) {
+                    p.setQtd(p.getQtd() - quantidade);
+                    double total = aplicarDesconto(p.getPreco() * quantidade);
                     System.out.println("Venda realizada. Total: " + total);
                     return total;
                 } else {
@@ -52,29 +89,33 @@ public class Estoque {
         return 0;
     }
 
-    // calcula o total de uma compra (usado no relatorio)
-    static double calcular_total(double preco, int quantidade) {
-        double t = preco * quantidade;
-        if (t > 200) {              // limite diferente do usado em vender()
-            t = t - t * 0.15;       // desconto diferente do usado em vender()
+    static double aplicarDesconto(double total) {
+        if (total > LIMITE_PARA_DESCONTO) {
+            return total - total * PERCENTUAL_DESCONTO;
         }
-        return t;
+        return total;
+    }
+
+    static double calcular_total(double preco, int quantidade) {
+        return aplicarDesconto(preco * quantidade);
     }
 
     static void listar() {
         System.out.println("=== PRODUTOS ===");
         for (int i = 0; i < produtos.size(); i++) {
-            System.out.println(produtos.get(i).nome + " - R$" + produtos.get(i).preco
-                    + " - qtd: " + produtos.get(i).qtd);
+            Produto p = produtos.get(i);
+            System.out.println(p.getNome() + " - R$" + p.getPreco()
+                    + " - qtd: " + p.getQtd());
         }
     }
 
     static void relatorio_estoque_baixo() {
         System.out.println("=== ESTOQUE BAIXO ===");
         for (int i = 0; i < produtos.size(); i++) {
-            if (produtos.get(i).qtd < 5) {   // estoque baixo
-                System.out.println(produtos.get(i).nome + " esta com estoque baixo ("
-                        + produtos.get(i).qtd + ")");
+            Produto p = produtos.get(i);
+            if (p.getQtd() < 5) {   // estoque baixo
+                System.out.println(p.getNome() + " esta com estoque baixo ("
+                        + p.getQtd() + ")");
             }
         }
     }
@@ -94,13 +135,49 @@ public class Estoque {
         // TODO: implementar de verdade
     }
 
+    static boolean autenticarAdmin(String senha) {
+        return SENHA_ADMIN.equals(senha);
+    }
+
+    private static String carregarSenhaAdmin() {
+        final String chave = "ESTOQUE_ADMIN_SENHA";
+
+        try (BufferedReader br = new BufferedReader(new FileReader(".env"))) {
+            String linha;
+            while ((linha = br.readLine()) != null) {
+                linha = linha.trim();
+                if (linha.isEmpty() || linha.startsWith("#")) {
+                    continue;
+                }
+                int separador = linha.indexOf('=');
+                if (separador < 0) {
+                    continue;
+                }
+                String nomeVariavel = linha.substring(0, separador).trim();
+                String valor = linha.substring(separador + 1).trim();
+                if (nomeVariavel.equals(chave)) {
+                    return valor;
+                }
+            }
+        } catch (IOException e) {
+            // .env ausente ou ilegivel: cai nos fallbacks abaixo.
+        }
+
+        String doAmbiente = System.getenv(chave);
+        if (doAmbiente != null && !doAmbiente.isEmpty()) {
+            return doAmbiente;
+        }
+
+        return "admin-dev";
+    }
+
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
         while (true) {
             System.out.println("\n1-Cadastrar  2-Vender  3-Listar  4-Estoque baixo  5-Admin  0-Sair");
             System.out.print("Opcao: ");
             String op = sc.next();
-            if (op.equals("1")) {
+            if (op.equals(OPCAO_CADASTRAR)) {
                 System.out.print("Nome: ");
                 String n = sc.next();
                 System.out.print("Preco: ");
@@ -108,25 +185,25 @@ public class Estoque {
                 System.out.print("Qtd: ");
                 int q = Integer.parseInt(sc.next());        // quebra se digitar texto
                 add(n, p, q);
-            } else if (op.equals("2")) {
+            } else if (op.equals(OPCAO_VENDER)) {
                 System.out.print("Nome do produto: ");
                 String n = sc.next();
                 System.out.print("Quantidade: ");
                 int q = Integer.parseInt(sc.next());
                 vender(n, q);
-            } else if (op.equals("3")) {
+            } else if (op.equals(OPCAO_LISTAR)) {
                 listar();
-            } else if (op.equals("4")) {
+            } else if (op.equals(OPCAO_ESTOQUE_BAIXO)) {
                 relatorio_estoque_baixo();
-            } else if (op.equals("5")) {
+            } else if (op.equals(OPCAO_ADMIN)) {
                 System.out.print("Senha: ");
                 String s = sc.next();
-                if (s.equals(SENHA_ADMIN)) {
+                if (autenticarAdmin(s)) {
                     System.out.println("Acesso liberado");
                 } else {
                     System.out.println("Senha errada");
                 }
-            } else if (op.equals("0")) {
+            } else if (op.equals(OPCAO_SAIR)) {
                 break;
             } else {
                 System.out.println("Opcao invalida");
